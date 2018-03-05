@@ -1,0 +1,394 @@
+---
+title: "Models"
+output:
+  html_document:
+    df_print: kable
+    theme: paper
+    toc: yes
+editor_options:
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = '../')
+rm(list = ls())
+```
+
+```{r}
+library(survey)
+source('./analysis/chendaniely/model_utils.R')
+
+# 1. run 'analysis-draft.Rmd' to get 'data_for_models.RDS'
+# 2. run '01-variable_selection.Rmd' to get 'model_dataframes.RData'
+# 3. run this file (modified '02-model_fit.Rmd')
+
+load('./data/model_dataframes.RData')
+
+svy_never_every     <- svydesign(ids = ~1, weights = ~weight, data = never_every[!is.na(never_every$weight), ])
+svy_never_some      <- svydesign(ids = ~1, weights = ~weight, data = never_some[!is.na(never_some$weight), ])
+svy_never_someevery <- svydesign(ids = ~1, weights = ~weight, data = never_someevery[!is.na(never_someevery$weight), ])
+svy_some_every      <- svydesign(ids = ~1, weights = ~weight, data = some_every[!is.na(some_every$weight), ])
+```
+
+
+
+# 1. Demographic model (Q13 ~ Dv)
+
+## (Dv only)
+- ppagecat
+- PPEDUCAT
+- income
+- PPREG4
+- work
+
+### Every vs. never (referent)
+
+```{r}
+# 1.1
+ne_demo <- svyglm(formula = Q13 ~ ppagecat + PPEDUCAT + income + PPREG4 + work,
+       design = svy_never_every,
+       family = quasibinomial(link = "logit"))
+print_svy_mod(ne_demo)
+```
+
+### Some vs. never (referent)
+
+```{r}
+# 1.1 
+ns_demo <- svyglm(formula = Q13 ~ ppagecat + PPEDUCAT + income + PPREG4 + work,
+       design = svy_never_some,
+       family = quasibinomial(link = "logit"))
+print_svy_mod(ns_demo)
+```
+
+```{r}
+## Some + every vs. never (referent) [Remove]
+# nse_demo <- svyglm(formula = Q13 ~ ppagecat + PPEDUCAT + income + PPREG4 + work,
+#        design = svy_never_someevery,
+#        family = quasibinomial(link = "logit"))
+# print_svy_mod(nse_demo)
+```
+
+
+# 1.1 Demographics + efficacy (Q20)
+
+## (Dv, Q20)
+
+### Every vs. never (referent)
+
+```{r}
+# 1.2
+ne_demo_belief <- svyglm(formula = Q13 ~ ppagecat + PPEDUCAT + income + PPREG4 + work + Q20,
+       design = svy_never_every,
+       family = quasibinomial(link = "logit"))
+print_svy_mod(ne_demo_belief)
+```
+
+### Some vs. never (referent)
+
+```{r}
+# 1.2
+ns_demo_belief <- svyglm(formula = Q13 ~ ppagecat + PPEDUCAT + income + PPREG4 + work + Q20,
+       design = svy_never_some,
+       family = quasibinomial(link = "logit"))
+print_svy_mod(ns_demo_belief)
+```
+###
+```{r}
+## Some + every vs. never [Remove]
+# nse_demo_belief <- svyglm(formula = Q13 ~ ppagecat + PPEDUCAT + income + PPREG4 + work + Q20,
+#        design = svy_never_someevery,
+#        family = quasibinomial(link = "logit"))
+# print_svy_mod(nse_demo_belief)
+```
+
+**F statistic**
+
+Every vs. never
+```{r}
+anova(ne_demo, ne_demo_belief, test = 'F')
+```
+Some vs. never
+```{r}
+anova(ns_demo, ns_demo_belief, test = 'F')
+```
+Some + every vs. never [Remove]
+```{r}
+#anova(nse_demo, nse_demo_belief, test = 'F')
+```
+
+**AIC/BIC**
+
+```{r}
+AIC(ne_demo, ne_demo_belief)
+AIC(ns_demo, ns_demo_belief)
+#AIC(nse_demo, nse_demo_belief)
+```
+```{r}
+#BIC(ne_demo, ne_demo_belief, maximal = ne_demo_belief)
+#BIC(ns_demo, ns_demo_belief, maximal = ns_demo_belief)
+#BIC(nse_demo, nse_demo_belief, maximal = nse_demo_belief)
+```
+
+> Note: Keep the efficacy (Q20) variable.
+
+
+
+# 2. Social influence (Q15, Q16, Q17)
+> Note: There is no 'never' group
+
+## (Dv, Q20, Q15,16,17)
+
+### Every vs. some (referent) ???
+
+```{r}
+# 2.
+se_demo_belief_social <- svyglm(formula = Q13 ~ ppagecat + PPEDUCAT + income + PPREG4 + work + Q20 + Q15 + Q16 + Q17,
+       design = svy_some_every,
+       family = quasibinomial(link = "logit"))
+print_svy_mod(se_demo_belief_social)
+```
+
+**F statistic**  
+> Note: There is no 'never' group
+
+```{r}
+#anova(ne_demo_belief_social, ne_demo_belief, test = 'F')
+```
+```{r}
+#anova(ns_demo_belief_social, ns_demo_belief, test = 'F')
+```
+```{r}
+#anova(nse_demo_belief_social, nse_demo_belief, test = 'F')
+```
+
+** AIC/BIC **  
+> Note: There is no 'never' group
+
+```{r}
+#AIC(ne_demo, ne_demo_belief, ne_demo_belief_social)
+#AIC(ns_demo, ns_demo_belief, ns_demo_belief_social)
+#AIC(nse_demo, nse_demo_belief, se_demo_belief_social)
+```
+```{r}
+#BIC(ne_demo, ne_demo_belief, ne_demo_belief_social, maximal = ne_demo_belief_social)
+#BIC(ns_demo, ns_demo_belief, ns_demo_belief_social, maximal = ns_demo_belief_social)
+#BIC(nse_demo, nse_demo_belief, se_demo_belief_social, maximal = se_demo_belief_social)
+```
+
+> Note: Drop Q15.
+
+
+# 2.1 Social influence subset
+
+## (Dv, Q20, Q16)
+
+### Every vs. some (referent)
+
+```{r}
+se_demo_belief_social <- svyglm(formula = Q13 ~ ppagecat + PPEDUCAT + income + PPREG4 + work + Q20 + Q16,
+       design = svy_some_every,
+       family = quasibinomial(link = "logit"))
+print_svy_mod(se_demo_belief_social)
+```
+
+
+# 2.2 Social influence subset
+
+## (Dv, Q20, Q16,17)
+
+### Every vs. some (referent)
+
+```{r}
+se_demo_belief_social <- svyglm(formula = Q13 ~ ppagecat + PPEDUCAT + income + PPREG4 + work + Q20 + Q16 + Q17,
+       design = svy_some_every,
+       family = quasibinomial(link = "logit"))
+print_svy_mod(se_demo_belief_social)
+```
+
+
+# 3. Cost and health insurance (Q14, Q19, Q21)
+> Note: Run Q19 and Q21 separately
+
+## (Dv, Q20, Q14)
+
+### Every vs. some (referent)
+
+```{r}
+se_demo_belief_cost <- svyglm(formula = Q13 ~ ppagecat + PPEDUCAT + income + PPREG4 + work + Q20 + Q14,
+       design = svy_some_every,
+       family = quasibinomial(link = "logit"))
+print_svy_mod(se_demo_belief_cost)
+```
+
+
+# 3.1 Cost subset
+
+## (Dv, Q20, Q19)
+
+### Every vs. some (referent)
+
+```{r}
+se_demo_belief_cost <- svyglm(formula = Q13 ~ ppagecat + PPEDUCAT + income + PPREG4 + work + Q20 + Q19,
+       design = svy_some_every,
+       family = quasibinomial(link = "logit"))
+print_svy_mod(se_demo_belief_cost)
+```
+
+
+# 3.2 Cost subset
+
+## (Dv, Q20, Q21)
+
+### Every vs. some (referent)
+
+```{r}
+se_demo_belief_cost <- svyglm(formula = Q13 ~ ppagecat + PPEDUCAT + income + PPREG4 + work + Q20 + Q21,
+       design = svy_some_every,
+       family = quasibinomial(link = "logit"))
+print_svy_mod(se_demo_belief_cost)
+```
+
+
+# 3.3 Cost subset
+
+## (Dv, Q20, Q14,19)
+
+### Every vs. some (referent)
+
+```{r}
+se_demo_belief_cost <- svyglm(formula = Q13 ~ ppagecat + PPEDUCAT + income + PPREG4 + work + Q20 + Q14 + Q19,
+       design = svy_some_every,
+       family = quasibinomial(link = "logit"))
+print_svy_mod(se_demo_belief_cost)
+```
+
+**AIC/BIC**
+
+```{r}
+#AIC(ne_demo, ne_demo_belief, ne_demo_belief_social, ne_demo_belief_cost)
+#AIC(ns_demo, ns_demo_belief, ns_demo_belief_social, ns_demo_belief_cost)
+#AIC(nse_demo, nse_demo_belief, nse_demo_belief_social, nse_demo_belief_cost)
+```
+```{r}
+#BIC(ne_demo, ne_demo_belief, ne_demo_belief_cost, maximal = ne_demo_belief_cost)
+#BIC(ns_demo, ns_demo_belief, ns_demo_belief_cost, maximal = ns_demo_belief_cost)
+#BIC(nse_demo, nse_demo_belief, nse_demo_belief_cost, maximal = nse_demo_belief_cost)
+```
+
+
+# 4. Barriers: Reasons to **not** get a vaccine
+> Note: Flip the response and Q18 variables
+
+```{r}
+library(forcats)
+df <- readRDS('./data/subset_recode.RDS')
+
+never_some_flipped <- df[df$Q13 %in% c('Yes, some years', 'No, never'), ]
+never_some_flipped$Q13 <- droplevels(never_some$Q13)
+never_some_flipped$Q13 <- fct_relevel(never_some$Q13, 'Yes, some years', after = 0L)
+
+table(never_some_flipped$Q13, useNA = 'always')
+levels(never_some_flipped$Q13)
+
+testthat::expect_equal(levels(never_some_flipped$Q13)[1], "Yes, some years")
+```
+
+```{r}
+table(never_some_flipped$Q13, never_some_flipped$Q18_1, useNA = 'always')
+```
+
+```{r}
+make_no_ref <- function(dat) {
+  dat <- fct_relevel(dat, "No", after = 0L)
+  testthat::expect_equal(levels(dat)[1], "No")
+  return(dat)
+}
+```
+
+```{r}
+never_some_flipped$Q18_1 <- sapply(never_some_flipped$Q18_1, make_no_ref)
+never_some_flipped$Q18_2 <- sapply(never_some_flipped$Q18_2, make_no_ref)
+never_some_flipped$Q18_3 <- sapply(never_some_flipped$Q18_3, make_no_ref)
+never_some_flipped$Q18_4 <- sapply(never_some_flipped$Q18_4, make_no_ref)
+never_some_flipped$Q18_5 <- sapply(never_some_flipped$Q18_5, make_no_ref)
+never_some_flipped$Q18_6 <- sapply(never_some_flipped$Q18_6, make_no_ref)
+never_some_flipped$Q18_7 <- sapply(never_some_flipped$Q18_7, make_no_ref)
+never_some_flipped$Q18_8 <- sapply(never_some_flipped$Q18_8, make_no_ref)
+never_some_flipped$Q18_9 <- sapply(never_some_flipped$Q18_9, make_no_ref)
+never_some_flipped$Q18_10 <- sapply(never_some_flipped$Q18_10, make_no_ref)
+
+svy_never_some_flipped <- svydesign(ids = ~1, weights = ~weight, data = never_some_flipped[!is.na(never_some_flipped$weight), ])
+```
+
+```{r}
+lapply(never_some_flipped[, 37:46], table)
+```
+
+```{r}
+table(df$Q18_1, df$Q13)
+```
+
+> Note: The reference response is "Yes, Some years." The model is modeling NOT getting a vaccine.
+
+
+## (Dv, Q18_1,2,3,4,5,6,7,8,9)
+
+### Never vs. some (referent)
+
+```{r}
+# Barriers only
+ns_demo_belief_barriers <- svyglm(formula = Q13 ~ ppagecat + PPEDUCAT + income + PPREG4 + work + Q18_1 + Q18_2 + Q18_3 + Q18_4 + Q18_5 + Q18_6 + Q18_7 + Q18_8 + Q18_9,
+       design = svy_never_some_flipped,
+       family = quasibinomial(link = "logit"))
+print_svy_mod(ns_demo_belief_barriers)
+```
+
+> Note: p-value < 0.05 for Q18_1, 2, 3, 5, 8
+> Only including the above Q18 subset
+
+
+# 4.1 Barriers subset + efficacy (Q18, Q20)
+
+## (Dv + Q20 + Q18_1,2,3,4,5,6,7,8,9)
+
+### Never vs. some (referent)
+
+```{r}
+# Barriers + efficacy
+ns_demo_belief_barriers <- svyglm(formula = Q13 ~ ppagecat + PPEDUCAT + income + PPREG4 + work + Q20 + Q18_1 + Q18_2 + Q18_3 + Q18_4 + Q18_5 + Q18_6 + Q18_7 + Q18_8 + Q18_9,
+       design = svy_never_some_flipped,
+       family = quasibinomial(link = "logit"))
+print_svy_mod(ns_demo_belief_barriers)
+```
+
+
+# 4.2 Barriers subset + efficacy + cost (Q18, Q20, Q19)
+
+## (Dv + Q20 + Q19 + Q18_1,2,3,5,7,8)
+
+### Never vs. some (referent)
+
+```{r}
+# Barriers + efficacy + cost
+ns_demo_belief_barriers <- svyglm(formula = Q13 ~ ppagecat + PPEDUCAT + income + PPREG4 + work + Q20 + Q18_1 + Q18_2 + Q18_3 + Q18_5 + Q18_7 + Q18_8 + Q19,
+       design = svy_never_some_flipped,
+       family = quasibinomial(link = "logit"))
+print_svy_mod(ns_demo_belief_barriers)
+```
+
+
+
+# 5. Combined model
+
+## (Dv, Q20, Q16,17, Q14,19)
+
+### Every vs. some (referent)
+
+```{r}
+se_model <- svyglm(formula = Q13 ~ ppagecat + PPEDUCAT + income + PPREG4 + work + Q20 + Q16 + Q17 + Q14 + Q19,
+       design = svy_some_every,
+       family = quasibinomial(link = "logit"))
+print_svy_mod(se_model)
+```

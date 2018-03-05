@@ -1,0 +1,309 @@
+---
+title: "Variable Selection"
+author: "Daniel Chen"
+date: "November 14, 2017"
+output: 
+  html_document: 
+    df_print: kable
+    number_sections: yes
+    theme: paper
+    toc: yes
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, size = "small")
+knitr::opts_knit$set(root.dir = '../../')
+```
+
+```{r}
+library(forcats)
+library(useful)
+library(glmnetUtils)
+library(glmnet)
+
+rm(list = ls())
+
+df <- readRDS('./data/subset_recode.RDS')
+
+```
+
+```{r}
+source('./analysis/chendaniely/model_utils.R')
+```
+
+
+# Reference Values
+
+```{r}
+# lapply(lapply(df, levels), '[[', 1)
+```
+
+```{r}
+# response variable levels
+levels(df$Q13)
+```
+
+# Subset response variables
+
+```{r}
+never_every <- df[df$Q13 %in% c('Yes, every year', 'No, never'), ]
+never_every$Q13 <- droplevels(never_every$Q13)
+never_every$Q13 <- fct_relevel(never_every$Q13, 'No, never', after = 0L)
+table(never_every$Q13, useNA = 'always')
+levels(never_every$Q13)
+
+testthat::expect_equal(levels(never_every$Q13)[1], "No, never")
+```
+
+
+```{r}
+never_some <- df[df$Q13 %in% c('Yes, some years', 'No, never'), ]
+never_some$Q13 <- droplevels(never_some$Q13)
+never_some$Q13 <- fct_relevel(never_some$Q13, 'No, never', after = 0L)
+table(never_some$Q13, useNA = 'always')
+levels(never_some$Q13)
+
+testthat::expect_equal(levels(never_some$Q13)[1], "No, never")
+```
+
+```{r}
+never_someevery <- df[df$Q13 %in% c('Yes, every year', 'Yes, some years', 'No, never'), ]
+never_someevery$Q13_nv_se <- as.character(never_someevery$Q13)
+
+never_someevery$Q13_nv_se <- sapply(X = never_someevery$Q13_nv_se, FUN = recode_never_someevery)
+never_someevery$Q13_nv_se <- as.factor(never_someevery$Q13_nv_se)
+never_someevery$Q13_nv_se <- fct_relevel(never_someevery$Q13_nv_se, 'No, never', after = 0L)
+table(never_someevery$Q13_nv_se, never_someevery$Q13,useNA = 'always')
+
+levels(never_someevery$Q13_nv_se)
+testthat::expect_equal(levels(never_someevery$Q13_nv_se)[1], "No, never")
+
+never_someevery$Q13 <- never_someevery$Q13_nv_se
+testthat::expect_equal(levels(never_someevery$Q13)[1], "No, never")
+```
+
+```{r}
+some_every <- df[df$Q13 %in% c('Yes, some years', 'Yes, every year'), ]
+some_every$Q13 <- droplevels(some_every$Q13)
+some_every$Q13 <- fct_relevel(some_every$Q13, 'Yes, some years', after = 0L)
+table(some_every$Q13, useNA = 'always')
+levels(some_every$Q13)
+
+testthat::expect_equal(levels(some_every$Q13)[1], "Yes, some years")
+```
+
+# Save out data
+
+```{r}
+save(never_every, never_some, never_someevery, some_every, file = 'data/model_dataframes.RData')
+```
+
+
+# LASSO
+
+Use LASSO to fit a model to use as a variable selection method
+
+
+## Never Every
+
+```{r}
+x  <- build.x(Q13 ~ PPGENDER + ppagecat + PPEDUCAT + PPETHM + income + marital +
+               PPMSACAT + PPREG4 + work - 1,
+             data = never_every, contrasts = FALSE)
+y <- build.y(Q13 ~ PPGENDER + ppagecat + PPEDUCAT + PPETHM + income + marital +
+               PPMSACAT + PPREG4 + work,
+             data = never_every)
+
+never_every_cv <- cv.glmnet(x = x, y = y, family = "binomial", nfolds = 10, weights = never_every$weight)
+```
+
+```{r}
+plot(never_every_cv)
+```
+
+```{r}
+# coef(never_every_cv, s = 'lambda.min')
+```
+
+## Never Some
+
+```{r}
+x  <- build.x(Q13 ~ PPGENDER + ppagecat + PPEDUCAT + PPETHM + income + marital +
+               PPMSACAT + PPREG4 + work - 1,
+             data = never_some, contrasts = FALSE)
+y <- build.y(Q13 ~ PPGENDER + ppagecat + PPEDUCAT + PPETHM + income + marital +
+               PPMSACAT + PPREG4 + work,
+             data = never_some)
+
+never_some_cv <- cv.glmnet(x = x, y = y, family = "binomial", nfolds = 10, weights = never_some$weight)
+```
+
+```{r}
+plot(never_some_cv)
+```
+
+```{r}
+# coef(never_some_cv, s = 'lambda.min')
+```
+
+## Never SomeEvery
+
+```{r}
+x  <- build.x(Q13 ~ PPGENDER + ppagecat + PPEDUCAT + PPETHM + income + marital +
+               PPMSACAT + PPREG4 + work - 1,
+             data = never_someevery, contrasts = FALSE)
+y <- build.y(Q13 ~ PPGENDER + ppagecat + PPEDUCAT + PPETHM + income + marital +
+               PPMSACAT + PPREG4 + work,
+             data = never_someevery)
+
+never_someevery_cv <- cv.glmnet(x = x, y = y, family = "binomial", nfolds = 10, weights = never_someevery$weight)
+```
+
+```{r}
+plot(never_someevery_cv)
+```
+
+```{r}
+# coef(never_someevery_cv, s = 'lambda.min')
+```
+
+## Coeff Tables
+
+```{r}
+
+coef_cv <- cbind(coef(never_every_cv, s = 'lambda.min'),
+                 coef(never_some_cv, s = 'lambda.min'),
+                 coef(never_someevery_cv, s = 'lambda.min'),
+                 coef(never_every_cv, s = 'lambda.1se'),
+                 coef(never_some_cv, s = 'lambda.1se'),
+                 coef(never_someevery_cv, s = 'lambda.1se')
+)
+
+coef_cv <- as.data.frame(as.matrix(coef_cv))
+
+coef_cv <- round(coef_cv, digits = 4)
+coef_cv[coef_cv == 0] <- '.'
+
+colnames(coef_cv) <- c('ne_min', 'ns_min', 'nse_min',
+                    'ne_1se', 'ns_1se', 'nse_1se')
+
+knitr::kable(coef_cv, digits = 2)
+```
+
+Using the lambda1se values we select the following demographic variables:
+
+ppagecat
+PPEDUCAT
+PPETHM
+income
+marital
+work
+
+# Bootstrap LASSO
+
+```{r}
+total <- 100
+
+pb <- txtProgressBar(min = 0, max = total, style = 3)
+
+all_kept_variables <- list()
+
+for (i in 1:total) {
+  boot_never_every <- sample(x = 1:nrow(never_every), size = nrow(never_every), replace = TRUE)
+  boot_never_every <- never_every[boot_never_every, ]
+  
+  boot_never_some <- sample(x = 1:nrow(never_some), size = nrow(never_some), replace = TRUE)
+  boot_never_some <- never_some[boot_never_some, ]
+  
+  boot_never_someevery <- sample(x = 1:nrow(never_someevery), size = nrow(never_someevery), replace = TRUE)
+  boot_never_someevery <- never_someevery[boot_never_someevery, ]
+  
+  
+  x  <- build.x(Q13 ~ PPGENDER + ppagecat + PPEDUCAT + PPETHM + income + marital +
+                  PPMSACAT + PPREG4 + work - 1,
+                data = boot_never_every, contrasts = FALSE)
+  y <- build.y(Q13 ~ PPGENDER + ppagecat + PPEDUCAT + PPETHM + income + marital +
+                 PPMSACAT + PPREG4 + work,
+               data = boot_never_every)
+  boot_never_every_cv <- cv.glmnet(x = x, y = y, family = "binomial", nfolds = 10, weights = boot_never_every$weight)
+  
+  x  <- build.x(Q13 ~ PPGENDER + ppagecat + PPEDUCAT + PPETHM + income + marital +
+                  PPMSACAT + PPREG4 + work - 1,
+                data = boot_never_some, contrasts = FALSE)
+  y <- build.y(Q13 ~ PPGENDER + ppagecat + PPEDUCAT + PPETHM + income + marital +
+                 PPMSACAT + PPREG4 + work,
+               data = boot_never_some)
+  boot_never_some_cv <- cv.glmnet(x = x, y = y, family = "binomial", nfolds = 10, weights = boot_never_some$weight)
+  
+  x  <- build.x(Q13 ~ PPGENDER + ppagecat + PPEDUCAT + PPETHM + income + marital +
+                  PPMSACAT + PPREG4 + work - 1,
+                data = boot_never_someevery, contrasts = FALSE)
+  y <- build.y(Q13 ~ PPGENDER + ppagecat + PPEDUCAT + PPETHM + income + marital +
+                 PPMSACAT + PPREG4 + work,
+               data = boot_never_someevery)
+  boot_never_someevery_cv <- cv.glmnet(x = x, y = y, family = "binomial", nfolds = 10, weights = boot_never_someevery$weight)
+  
+  coef_cv <- cbind(coef(boot_never_every_cv, s = 'lambda.min'),
+                   coef(boot_never_some_cv, s = 'lambda.min'),
+                   coef(boot_never_someevery_cv, s = 'lambda.min'),
+                   coef(boot_never_every_cv, s = 'lambda.1se'),
+                   coef(boot_never_some_cv, s = 'lambda.1se'),
+                   coef(boot_never_someevery_cv, s = 'lambda.1se')
+  )
+  
+  coef_cv <- as.data.frame(as.matrix(coef_cv))
+  
+  coef_cv <- round(coef_cv, digits = 4)
+  coef_cv[coef_cv == 0] <- '.'
+  
+  colnames(coef_cv) <- c('ne_min', 'ns_min', 'nse_min',
+                         'ne_1se', 'ns_1se', 'nse_1se')
+  
+  kept_variable <- coef_cv > 0
+  all_kept_variables[[i]] <- kept_variable
+  
+  setTxtProgressBar(pb, i)
+}
+```
+
+## Looking at results
+
+
+### Raw Counts
+
+```{r}
+var_counts <- Reduce("+", all_kept_variables)
+var_counts
+```
+
+
+### Counts > 50
+```{r}
+var_counts > 50
+```
+
+### Proportion
+
+```{r}
+var_prop <- var_counts / total
+var_prop
+```
+
+### Conclusion
+
+drop:
+
+- PPGENDER
+- PPETHM
+- PPMSACAT
+- marital
+
+keep:
+
+- ppagecat
+- PPEDUCAT
+- income
+- PPREG4
+- work

@@ -1,0 +1,863 @@
+---
+title: "analysis draft"
+output: 
+  html_document:
+    fig_caption: yes
+    fig_height: 3
+    fig_width: 6
+    keep_md: yes
+    theme: paper
+    toc: yes
+    toc_depth: 2
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+rm(list = ls(all.names = TRUE))
+knitr::opts_knit$set(root.dir = '..')
+knitr::opts_chunk$set(echo = T, cache = T, warning = F, message = F, tidy = T, size = "small")
+```
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(gridExtra)
+library(knitr)
+library(rmarkdown)
+library(survey)
+library(tidyr)
+
+## flu-survey/code/data_prep.R
+load('./data/data_prep.RData')
+
+## subset columns
+df <- dataf[, c(1,4:27, 28:33, 92:111, 429)]
+names(df)
+```
+
+```{r recode-data}
+## recode variables
+library(car)
+
+## use code function for response variables
+## reset the "default" level on categorical variables
+code <- function(col, map, ref) {
+  relevel(as.factor(map[col]), ref=ref)
+}
+
+## income - PPINCIMP
+income.map <- c(rep("under $10k", 3),
+                rep("$10k to $25k", 4),
+                rep("$25k to $50k", 4),
+                rep("$50k to $75k", 2),
+                rep("$75k to $100k", 2),
+                rep("$100k to $150k", 2),
+                rep("over $150k", 2))
+df$income <- code(dataf$PPINCIMP, income.map, "under $10k")
+income.lab <- c("under $10k", "$10k to $25k", "$25k to $50k", "$50k to $75k", "$75k to $100k", "$100k to $150k", "over $150k")
+df$income <- factor(df$income, levels = income.lab)
+
+## marital status - PPMARIT
+marital.map <- c("single", "partnered", "partnered", "single", "single", "single")
+df$marital <- code(dataf$PPMARIT, marital.map, "single")
+
+## employment status - PPWORK
+work.map <- c(rep("unemployed", 5),
+              rep("employed", 2))
+df$work <- code(dataf$PPWORK, work.map, "unemployed")
+
+## check columns
+colnames(df)
+
+
+saveRDS(df, file = './data/subset_recode.RDS')
+```
+
+```{r ggplot}
+## ggplot templates
+ptext <- theme(axis.text = element_text(size = rel(0.9)), axis.text.x = element_text(angle = 45, hjust = 1))
+ptext2 <- ptext + theme(axis.text.x = element_blank())
+```
+
+```{r survey-des}
+## create survey object
+options(digits = 4)
+options(survey.lonely.psu = "adjust")
+des <- svydesign(ids = ~1, weights = ~weight, data = df[!is.na(df$weight), ])
+```
+
+
+
+# Q13. Do you get the flu vaccine?
+
+```{r}
+## Q13. Do you get the flu vaccine?
+q13 <- as.data.frame(svytable(~Q13 + ppagecat + PPGENDER + PPETHM + income + PPEDUCAT + work + marital, des, round = T))
+
+# univariate
+p <- ggplot(q13, aes(Q13, weight = Freq)) + ptext
+p + geom_bar() + ggtitle("Q13. Do you get the flu vaccine?")
+
+# raw count
+with(df, addmargins(table(Q13)))
+
+# weighted count
+as.data.frame(svytable(~Q13, des, round = T))
+```
+
+```{r eval=FALSE, include=FALSE}
+## Q13: chi-squares
+svychisq(~Q13 + ppagecat, des)
+#svychisq(~Q13 + ppagect4, des)
+#svychisq(~Q13 + PPEDUC, des)
+svychisq(~Q13 + PPEDUCAT, des)
+svychisq(~Q13 + PPETHM, des)
+svychisq(~Q13 + PPGENDER, des)
+svychisq(~Q13 + PPHHHEAD, des)
+#svychisq(~Q13 + PPHOUSE, des)
+svychisq(~Q13 + income, des)
+svychisq(~Q13 + marital, des)
+svychisq(~Q13 + PPMSACAT, des)
+svychisq(~Q13 + PPREG4, des)
+svychisq(~Q13 + ppreg9, des)
+svychisq(~Q13 + PPRENT, des)
+svychisq(~Q13 + PPSTATEN, des)
+svychisq(~Q13 + PPT01, des)
+svychisq(~Q13 + PPT25, des)
+svychisq(~Q13 + PPT612, des)
+svychisq(~Q13 + PPT1317, des)
+#svychisq(~Q13 + PPT18OV, des) #
+svychisq(~Q13 + work, des)
+svychisq(~Q13 + PPNET, des)
+```
+
+Significant p-values for Q13:
+Age, education, ethnicity, housing type, income, marital status, metro status, region, rental status, employment status, internet 
+
+
+## Ethnicity
+
+```{r}
+### Q13 and PPETHM: EXAMPLE
+
+# chi-square: Q13 and PPETHM
+svychisq(~Q13 + PPETHM, des)
+
+# glm: Q13 and PPETHM
+a <- glm(Q13 ~ PPETHM, family = quasibinomial(link = "logit"), data = df, weights = weight)
+summary(a)
+
+# unweighted table
+as.data.frame(with(df, addmargins(table(PPETHM, Q13))))
+
+# weighted proportions
+(q <- svyby(~Q13, ~PPETHM, des, svymean, na.rm = T))
+
+# plot: Q13. No, never
+er <- geom_errorbar(aes(ymin = q[4] - q[7],
+                        ymax = q[4] + q[7]), width = .25)
+ggplot(q, aes(PPETHM, q[4])) + geom_point() + xlab("") + ylab("Q13No, never") + er + ggtitle(label = "") 
+```
+
+## Gender
+
+```{r}
+## Q13 and PPGENDER
+svychisq(~Q13 + PPGENDER, des)
+
+a <- glm(Q13 ~ PPGENDER, family = quasibinomial(link = "logit"), data = df, weights = weight)
+summary(a)
+
+# unweighted table
+as.data.frame(with(df, addmargins(table(PPGENDER, Q13))))
+# weighted props
+(q <- svyby(~Q13, ~PPGENDER, des, svymean, na.rm = T))
+
+
+# plot: Yes, every year
+er <- geom_errorbar(aes(ymin = q[2] - q[5],
+                        ymax = q[2] + q[5]), width = .25)
+ggplot(q, aes(PPGENDER, q[2])) + geom_point() + xlab("") + ylab("Q13Yes, every year") + er + ggtitle(label = "")
+```
+
+## Age
+
+```{r}
+## Q13 and ppagecat
+svychisq(~Q13 + ppagecat, des)
+
+a <- glm(Q13 ~ ppagecat, family = quasibinomial(link = "logit"), data = df, weights = weight)
+summary(a)
+
+# weighted props
+(q <- svyby(~Q13, ~ppagecat, des, svymean, na.rm = T))
+# unweighted table
+as.data.frame(with(df, addmargins(table(ppagecat, Q13))))
+
+# plot: Yes, every year
+er <- geom_errorbar(aes(ymin = q[2] - q[5],
+                        ymax = q[2] + q[5]), width = .25)
+ggplot(q, aes(ppagecat, q[2])) + geom_point() + xlab("") + ylab("Q13Yes, every year") + er + ggtitle(label = "")
+```
+
+```{r eval=FALSE, include=FALSE}
+## Q13 and ppagect4
+svychisq(~Q13 + ppagect4, des)
+
+a <- glm(Q13 ~ ppagect4, family = quasibinomial(link = "logit"), data = df, weights = weight)
+summary(a)
+
+# weighted table
+(q <- svyby(~Q13, ~ppagect4, des, svymean, na.rm = T))
+
+# unweighted table
+as.data.frame(with(df, addmargins(table(ppagect4, Q13))))
+
+# plot: Yes, every year
+er <- geom_errorbar(aes(ymin = q[2] - q[5],
+                        ymax = q[2] + q[5]), width = .25)
+ggplot(q, aes(ppagect4, q[2])) + geom_point() + xlab("") + ylab("Q13Yes, every year") + er + ggtitle(label = "")
+```
+
+## Education
+
+```{r}
+## Q13 and PPEDUCAT
+svychisq(~Q13 + PPEDUCAT, des)
+
+a <- glm(Q13 ~ PPEDUCAT, family = quasibinomial(link = "logit"), data = df, weights = weight)
+summary(a)
+
+# weighted table
+(q <- svyby(~Q13, ~PPEDUCAT, des, svymean, na.rm = T))
+# unweighted table
+as.data.frame(with(df, addmargins(table(PPEDUCAT, Q13))))
+
+# plot: Yes, every year
+er <- geom_errorbar(aes(ymin = q[2] - q[5],
+                        ymax = q[2] + q[5]), width = .25)
+ggplot(q, aes(PPEDUCAT, q[2])) + geom_point() + xlab("") + ylab("Q13Yes, every year") + er + ggtitle(label = "")
+```
+
+## Housing type
+
+```{r eval=FALSE, include=FALSE}
+## Q13 and PPHOUSE
+svychisq(~Q13 + PPHOUSE, des)
+
+a <- glm(Q13 ~ PPHOUSE, family = quasibinomial(link = "logit"), data = df, weights = weight)
+summary(a)
+
+# weighted table
+(q <- svyby(~Q13, ~PPHOUSE, des, svymean, na.rm = T))
+# unweighted table
+with(df, addmargins(table(Q13, PPHOUSE)))
+
+# plot: Yes, every year
+er <- geom_errorbar(aes(ymin = q[2] - q[5],
+                        ymax = q[2] + q[5]), width = .25)
+ggplot(q, aes(PPHOUSE, q[2])) + geom_point() + xlab("") + ylab("Q13Yes, every year") + er + ggtitle(label = "") 
+```
+
+## Income
+
+```{r}
+## Q13 and income
+svychisq(~Q13 + income, des)
+
+a <- glm(Q13 ~ income, family = quasibinomial(link = "logit"), data = df, weights = weight)
+summary(a)
+
+# weighted table
+(q <- svyby(~Q13, ~income, des, svymean, na.rm = T))
+# unweighted table
+as.data.frame(with(df, addmargins(table(income, Q13))))
+
+# plot: Yes, every year
+er <- geom_errorbar(aes(ymin = q[2] - q[5],
+                        ymax = q[2] + q[5]), width = .25)
+ggplot(q, aes(income, q[2])) + geom_point() + xlab("") + ylab("Q13Yes, every year") + er + ggtitle(label = "") 
+```
+
+## Marital status
+
+```{r}
+## Q13 and marital
+svychisq(~Q13 + marital, des)
+
+a <- glm(Q13 ~ marital, family = quasibinomial(link = "logit"), data = df, weights = weight)
+summary(a)
+
+# unweighted table
+as.data.frame(with(df, addmargins(table(marital, Q13))))
+# weighted table
+(q <- svyby(~Q13, ~marital, des, svymean, na.rm = T))
+
+# plot: Yes, every year
+er <- geom_errorbar(aes(ymin = q[2] - q[5],
+                        ymax = q[2] + q[5]), width = .25)
+ggplot(q, aes(marital, q[2])) + geom_point() + xlab("") + ylab("Q13Yes, every year") + er + ggtitle(label = "") 
+```
+
+## Metro status
+
+```{r}
+## Q13 and PPMSACAT
+svychisq(~Q13 + PPMSACAT, des)
+
+a <- glm(Q13 ~ PPMSACAT, family = quasibinomial(link = "logit"), data = df, weights = weight)
+summary(a)
+
+# unweighted table
+as.data.frame(with(df, addmargins(table(PPMSACAT, Q13))))
+# weighted table
+(q <- svyby(~Q13, ~PPMSACAT, des, svymean, na.rm = T))
+
+
+# plot: Yes, every year
+er <- geom_errorbar(aes(ymin = q[2] - q[5],
+                        ymax = q[2] + q[5]), width = .25)
+ggplot(q, aes(PPMSACAT, q[2])) + geom_point() + xlab("") + ylab("Q13Yes, every year") + er + ggtitle(label = "")
+```
+
+## Region
+
+```{r}
+## Q13 and region4 and region9
+svychisq(~Q13 + PPREG4, des)
+svychisq(~Q13 + ppreg9, des)
+
+a <- glm(Q13 ~ PPREG4, family = quasibinomial(link = "logit"), data = df, weights = weight)
+summary(a)
+b <- glm(Q13 ~ ppreg9, family = quasibinomial(link = "logit"), data = df, weights = weight)
+summary(b)
+
+# unweighted table
+as.data.frame(with(df, addmargins(table(PPREG4, Q13))))
+with(df, addmargins(table(Q13, ppreg9)))
+
+# weighted table
+(q <- svyby(~Q13, ~PPREG4, des, svymean, na.rm = T))
+(q2 <- svyby(~Q13, ~ppreg9, des, svymean, na.rm = T))
+
+# plot: Yes, every year
+er <- geom_errorbar(aes(ymin = q[2] - q[5],
+                        ymax = q[2] + q[5]), width = .25)
+ggplot(q, aes(PPREG4, q[2])) + geom_point() + xlab("") + ylab("Q13Yes, every year") + er + ggtitle(label = "") 
+
+er2 <- geom_errorbar(aes(ymin = q2[2] - q2[5],
+                        ymax = q2[2] + q2[5]), width = .25)
+ggplot(q2, aes(ppreg9, q2[2])) + geom_point() + xlab("") + ylab("Q13Yes, every year") + er2 + ggtitle(label = "") 
+```
+
+## Rental Status
+
+```{r eval=FALSE, include=FALSE}
+## Q13 and PPRENT
+svychisq(~Q13 + PPRENT, des)
+
+a <- glm(Q13 ~ PPRENT, family = quasibinomial(link = "logit"), data = df, weights = weight)
+summary(a)
+
+# weighted table
+(q <- svyby(~Q13, ~PPRENT, des, svymean, na.rm = T))
+# unweighted table
+with(df, addmargins(table(Q13, PPRENT)))
+
+# plot: Yes, every year
+er <- geom_errorbar(aes(ymin = q[2] - q[5],
+                        ymax = q[2] + q[5]), width = .25)
+ggplot(q, aes(PPRENT, q[2])) + geom_point() + xlab("") + ylab("Q13Yes, every year") + er + ggtitle(label = "") 
+```
+
+## Employment status
+
+```{r}
+## Q13 and work
+svychisq(~Q13 + work, des)
+
+a <- glm(Q13 ~ work, family = quasibinomial(link = "logit"), data = df, weights = weight)
+summary(a)
+
+# unweighted table
+as.data.frame(with(df, addmargins(table(work, Q13))))
+# weighted table
+(q <- svyby(~Q13, ~work, des, svymean, na.rm = T))
+
+# plot: Yes, every year
+er <- geom_errorbar(aes(ymin = q[2] - q[5],
+                        ymax = q[2] + q[5]), width = .25)
+ggplot(q, aes(work, q[2])) + geom_point() + xlab("") + ylab("Q13Yes, every year") + er + ggtitle(label = "") 
+```
+
+## Internet status
+
+```{r}
+## Q13 and PPNET
+svychisq(~Q13 + PPNET, des)
+
+a <- glm(Q13 ~ PPNET, family = quasibinomial(link = "logit"), data = df, weights = weight)
+summary(a)
+
+# unweighted table
+as.data.frame(with(df, addmargins(table(PPNET, Q13))))
+# weighted table
+(q <- svyby(~Q13, ~PPNET, des, svymean, na.rm = T))
+
+# plot: Yes, every year
+er <- geom_errorbar(aes(ymin = q[2] - q[5],
+                        ymax = q[2] + q[5]), width = .25)
+ggplot(q, aes(PPNET, q[2])) + geom_point() + xlab("") + ylab("Q13Yes, every year") + er + ggtitle(label = "Internet status")
+```
+
+
+# Q14. How much do you pay to get an influenza vaccine?
+
+```{r}
+## Q14. How much do you pay to get an influenza vaccine?
+q14 <- as.data.frame(svytable(~Q14 + Q13 + ppagecat + PPGENDER + PPETHM + PPEDUCAT, des, round = T))
+
+# univariate
+title <- ggtitle("Q14. How much do you pay to get an influenza vaccine?")
+p <- ggplot(q14, aes(Q14, weight = Freq)) + ptext
+p + geom_bar() + title
+
+# counts
+with(df, addmargins(table(Q14)))
+
+# bivariate
+ggplot(q14, aes(Q14, fill = Q13, weight = Freq)) + ptext + geom_bar() + title
+```
+
+```{r}
+## Q14 by Q13: vaccination status
+#head(df[c('CaseID','Q13','Q14')])
+#nrow(df)
+
+## drop NAs from variables of interest
+df_sub <- df[!is.na(df$Q14) & !is.na(df$Q13), ]
+head(df_sub[c('CaseID','Q13','Q14')])
+nrow(df_sub)
+
+## count
+with(df_sub, addmargins(table(Q14, Q13)))
+
+## drop where too few observations
+#df_sub <- df_sub[!df_sub$Q14=="More than $60" & !df_sub$Q13=="No, never", ]
+df_sub <- df_sub[!df_sub$Q14=="More than $60", ]
+nrow(df_sub)
+
+## drop unused levels
+df_sub <- droplevels(df_sub)
+
+## updated count
+with(df_sub, addmargins(table(Q14, Q13)))
+
+## update survey object
+options(digits = 4)
+options(survey.lonely.psu = "adjust")
+des14 <- svydesign(ids = ~1, weights = ~weight, data = df_sub)
+
+## weighted table
+#svytable(~Q14 + Q13, des14, round = T)  # weighted counts
+svyby(~Q13, ~Q14, des14, svymean, na.rm.all = T)
+
+svychisq(~Q14 + Q13, des14)
+a <- glm(Q13 ~ Q14, family = quasibinomial(link = "logit"), data = df_sub, weights = weight)
+summary(a)
+```
+
+
+# Q20. How effective do you think the influenza vaccine is in protecting people from becoming sick with influenza?
+
+```{r}
+## Q20. How effective do you think the influenza vaccine is in protecting people from becoming sick with influenza?
+q20 <- as.data.frame(svytable(~Q20 + Q13 + ppagecat + PPGENDER + PPETHM + PPEDUCAT, des, round = T))
+
+# univariate
+title <- ggtitle("Q20. How effective do you think the influenza vaccine is in protecting people from becoming sick with influenza?")
+ggplot(q20, aes(Q20, weight = Freq)) + ptext + geom_bar() + title
+
+# counts
+with(df, addmargins(table(Q20)))
+
+# bivariate
+ggplot(q20, aes(Q20, fill = Q13, weight = Freq)) + ptext + geom_bar() + title
+```
+
+```{r}
+## Q20 by Q13: vaccination status
+#head(df[c('CaseID','Q13','Q20')])
+#nrow(df)
+
+## drop NAs from variables of interest
+df_sub <- df[!is.na(df$Q20) & !is.na(df$Q13), ]
+head(df_sub[c('CaseID','Q13','Q20')])
+nrow(df_sub)
+
+## count
+with(df_sub, addmargins(table(Q20, Q13)))
+
+## update survey object
+options(digits = 4)
+options(survey.lonely.psu = "adjust")
+des20 <- svydesign(ids = ~1, weights = ~weight, data = df_sub)
+
+## weighted table
+svyby(~Q13, ~Q20, des20, svymean, na.rm = T)
+
+# chisq
+svychisq(~Q20 + Q13, des20)
+a <- glm(Q13 ~ Q20, family = quasibinomial(link = "logit"), data = df_sub, weights = weight)
+summary(a)
+```
+
+
+# Q15. Are you more likely to get a vaccine if others around you get a vaccine?
+
+```{r}
+## Q15. Are you more likely to get a vaccine if others around you get a vaccine?
+q15 <- as.data.frame(svytable(
+  ~Q15 + Q13 + PPGENDER + ppagecat + PPETHM + income + PPEDUCAT, des, round = T))
+
+# univariate
+title <- ggtitle("Q15. Are you more likely to get a vaccine if others around you get a vaccine?")
+p <- ggplot(q15, aes(Q15, weight = Freq)) + ptext
+p + geom_bar() + title
+
+# bivariate
+ggplot(q15, aes(Q15, fill = Q13, weight = Freq)) + ptext + geom_bar() + title
+```
+
+```{r}
+## Q15 by Q13: vaccination status
+#head(df[c('CaseID','Q13','Q15')])
+#nrow(df)
+
+## drop NAs from variables of interest
+df_sub <- df[!is.na(df$Q15) & !is.na(df$Q13), ]
+head(df_sub[c('CaseID','Q13','Q15')])
+nrow(df_sub)
+
+## count
+with(df_sub, addmargins(table(Q15, Q13)))
+
+## drop unused levels
+df_sub <- droplevels(df_sub)
+
+## updated count
+with(df_sub, addmargins(table(Q15, Q13)))
+
+## update survey object
+options(digits = 4)
+options(survey.lonely.psu = "adjust")
+des15 <- svydesign(ids = ~1, weights = ~weight, data = df_sub)
+
+## weighted table
+#svytable(~Q15 + Q13, des15, round = T)  # weighted counts
+svyby(~Q13, ~Q15, des15, svymean, na.rm.all = T)
+
+svychisq(~Q15 + Q13, des15)
+a <- glm(Q13 ~ Q15, family = quasibinomial(link = "logit"), data = df_sub, weights = weight)
+summary(a)
+```
+
+# Q16. Are you more likely to get a vaccine if others around you do not get a vaccine?
+
+```{r}
+## Q16. Are you more likely to get a vaccine if others around you do not get a vaccine?
+q16 <- as.data.frame(svytable(
+  ~Q16 + Q13 + PPGENDER + ppagecat + PPETHM + income + PPEDUCAT, des, round = T))
+
+# univariate
+title <- ggtitle("Q16. Are you more likely to get a vaccine if others around you do not get a vaccine?")
+p <- ggplot(q16, aes(Q16, weight = Freq)) + ptext
+p + geom_bar() + title
+
+# counts
+with(df, addmargins(table(Q16)))
+
+# bivariate
+ggplot(q16, aes(Q16, fill = Q13, weight = Freq)) + ptext + geom_bar() + title
+```
+
+```{r}
+## Q16 by Q13: vaccination status
+#head(df[c('CaseID','Q13','Q16')])
+#nrow(df)
+
+## drop NAs from variables of interest
+df_sub <- df[!is.na(df$Q16) & !is.na(df$Q13), ]
+head(df_sub[c('CaseID','Q13','Q16')])
+nrow(df_sub)
+
+## count
+with(df_sub, addmargins(table(Q16, Q13)))
+
+## drop unused levels
+df_sub <- droplevels(df_sub)
+
+## updated count
+with(df_sub, addmargins(table(Q16, Q13)))
+
+## update survey object
+options(digits = 4)
+options(survey.lonely.psu = "adjust")
+des16 <- svydesign(ids = ~1, weights = ~weight, data = df_sub)
+
+## weighted table
+#svytable(~Q16 + Q13, des16, round = T)  # weighted counts
+svyby(~Q13, ~Q16, des16, svymean, na.rm.all = T)
+
+svychisq(~Q16 + Q13, des16)
+a <- glm(Q13 ~ Q16, family = quasibinomial(link = "logit"), data = df_sub, weights = weight)
+summary(a)
+```
+
+
+# Q17. Do you get a vaccine to protect yourself, protect others, or protect yourself and others?
+
+```{r}
+## Q17. Do you get a vaccine to protect yourself, protect others, or protect yourself and others?
+q17 <- as.data.frame(svytable(
+  ~Q17 + Q13 + PPGENDER + ppagecat + PPETHM + income + PPEDUCAT, des, round = T))
+
+title <- ggtitle("Q17. Do you get a vaccine to protect yourself, protect others, or protect yourself and others?")
+p <- ggplot(q17, aes(Q17, weight = Freq)) + ptext
+p + geom_bar() + title
+
+# counts
+with(df, addmargins(table(Q17)))
+
+# bivariate
+ggplot(q17, aes(Q17, fill = Q13, weight = Freq)) + ptext + geom_bar() + title
+```
+
+```{r}
+## Q17 by Q13: vaccination status
+#head(df[c('CaseID','Q13','Q17')])
+#nrow(df)
+
+## drop NAs from variables of interest
+df_sub <- df[!is.na(df$Q17) & !is.na(df$Q13), ]
+head(df_sub[c('CaseID','Q13','Q17')])
+nrow(df_sub)
+
+## count
+with(df_sub, addmargins(table(Q17, Q13)))
+
+## drop unused levels
+df_sub <- droplevels(df_sub)
+
+## updated count
+with(df_sub, addmargins(table(Q17, Q13)))
+
+## update survey object
+options(digits = 4)
+options(survey.lonely.psu = "adjust")
+des17 <- svydesign(ids = ~1, weights = ~weight, data = df_sub)
+
+## weighted table
+#svytable(~Q17 + Q13, des17, round = T)  # weighted counts
+svyby(~Q13, ~Q17, des17, svymean, na.rm.all = T)
+
+svychisq(~Q17 + Q13, des17)
+a <- glm(Q13 ~ Q17, family = quasibinomial(link = "logit"), data = df_sub, weights = weight)
+summary(a)
+```
+
+
+# Q19. Do you have health insurance?
+
+```{r}
+## Q19. Do you have health insurance?
+q19 <- as.data.frame(svytable(
+  ~Q19 + Q13 + PPGENDER + ppagecat + PPETHM + income + PPEDUCAT, des, round = T))
+
+# univariate
+title <- ggtitle("Q19. Do you have health insurance?")
+p <- ggplot(q19, aes(Q19, weight = Freq)) + ptext
+p + geom_bar() + title
+
+# counts
+with(df, addmargins(table(Q19)))
+
+# bivariate
+ggplot(q19, aes(Q19, fill = Q13, weight = Freq)) + ptext + geom_bar() + title
+```
+
+```{r}
+## Q19 by Q13: vaccination status
+#head(df[c('CaseID','Q13','Q19')])
+#nrow(df)
+
+## drop NAs from variables of interest
+df_sub <- df[!is.na(df$Q19) & !is.na(df$Q13), ]
+head(df_sub[c('CaseID','Q13','Q19')])
+nrow(df_sub)
+
+## count
+with(df_sub, addmargins(table(Q19, Q13)))
+
+## drop unused levels
+df_sub <- droplevels(df_sub)
+
+## updated count
+with(df_sub, addmargins(table(Q19, Q13)))
+
+## update survey object
+options(digits = 4)
+options(survey.lonely.psu = "adjust")
+des19 <- svydesign(ids = ~1, weights = ~weight, data = df_sub)
+
+## weighted table
+#svytable(~Q19 + Q13, des19, round = T)  # weighted counts
+svyby(~Q13, ~Q19, des19, svymean, na.rm.all = T)
+
+svychisq(~Q19 + Q13, des19)
+a <- glm(Q13 ~ Q19, family = quasibinomial(link = "logit"), data = df_sub, weights = weight)
+summary(a)
+```
+
+
+# Q21. Are influenza vaccines covered by your insurance?
+
+```{r}
+## Q21. Are influenza vaccines covered by your insurance?
+### subset by Q19 = Yes
+q21 <- as.data.frame(svytable(~Q21 + Q13 + ppagecat + PPGENDER + PPETHM + PPEDUCAT, des, round = T))
+
+# univariate
+title <- ggtitle("Q21. How much do you pay to get an influenza vaccine?")
+p <- ggplot(q21, aes(Q21, weight = Freq)) + ptext
+p + geom_bar() + title
+
+# counts
+with(df, addmargins(table(Q21)))
+
+# bivariate
+ggplot(q21, aes(Q21, fill = Q13, weight = Freq)) + ptext + geom_bar() + title
+```
+
+```{r}
+## Q21 by Q13: vaccination status
+#head(df[c('CaseID','Q13','Q21')])
+#nrow(df)
+
+## drop NAs from variables of interest
+df_sub <- df[!is.na(df$Q21) & !is.na(df$Q13), ]
+head(df_sub[c('CaseID','Q13','Q21')])
+nrow(df_sub)
+
+## count
+with(df_sub, addmargins(table(Q21, Q13)))
+
+## drop unused levels
+df_sub <- droplevels(df_sub)
+
+## updated count
+with(df_sub, addmargins(table(Q21, Q13)))
+
+## update survey object
+options(digits = 4)
+options(survey.lonely.psu = "adjust")
+des21 <- svydesign(ids = ~1, weights = ~weight, data = df_sub)
+
+## weighted table
+#svytable(~Q21 + Q13, des21, round = T)  # weighted counts
+svyby(~Q13, ~Q21, des21, svymean, na.rm.all = T)
+
+svychisq(~Q21 + Q13, des21)
+a <- glm(Q13 ~ Q21, family = quasibinomial(link = "logit"), data = df_sub, weights = weight)
+summary(a)
+```
+
+
+# Q18. What are the reasons you would not get an influenza vaccine?
+
+```{r}
+## Q18. What are the reasons you would not get an influenza vaccine?
+title <- ggtitle("Q18. What are the reasons you would not get an influenza vaccine?")
+```
+
+```{r}
+## Q18 by Q13: vaccination status
+## drop NAs from variables of interest
+df_sub <- df[!is.na(df$Q18_1) & !is.na(df$Q13), ]
+#head(df_sub[c('CaseID','Q13','Q18_1')])
+nrow(df_sub)
+
+## count for Q18_1
+with(df_sub, addmargins(table(Q18_1, Q13)))
+
+## drop unused levels
+df_sub <- droplevels(df_sub)
+
+## updated counts for all Q18
+with(df_sub, addmargins(table(Q18_1, Q13)))
+with(df_sub, addmargins(table(Q18_2, Q13)))
+with(df_sub, addmargins(table(Q18_3, Q13)))
+with(df_sub, addmargins(table(Q18_4, Q13)))
+with(df_sub, addmargins(table(Q18_5, Q13)))
+with(df_sub, addmargins(table(Q18_6, Q13)))
+with(df_sub, addmargins(table(Q18_7, Q13)))
+with(df_sub, addmargins(table(Q18_8, Q13)))
+with(df_sub, addmargins(table(Q18_9, Q13)))
+
+## update survey object
+options(digits = 4)
+options(survey.lonely.psu = "adjust")
+des18 <- svydesign(ids = ~1, weights = ~weight, data = df_sub)
+
+## weighted tables
+svyby(~Q13, ~Q18_1, des18, svymean, na.rm.all = T)
+svyby(~Q13, ~Q18_2, des18, svymean, na.rm.all = T)
+svyby(~Q13, ~Q18_3, des18, svymean, na.rm.all = T)
+svyby(~Q13, ~Q18_4, des18, svymean, na.rm.all = T)
+svyby(~Q13, ~Q18_5, des18, svymean, na.rm.all = T)
+svyby(~Q13, ~Q18_6, des18, svymean, na.rm.all = T)
+svyby(~Q13, ~Q18_7, des18, svymean, na.rm.all = T)
+svyby(~Q13, ~Q18_8, des18, svymean, na.rm.all = T)
+svyby(~Q13, ~Q18_9, des18, svymean, na.rm.all = T)
+
+svychisq(~Q18_9 + Q13, des18)
+#a <- glm(Q13 ~ Q18_1, family = quasibinomial(link = "logit"), data = df_sub, weights = weight)
+#summary(a)
+```
+
+
+# Regression model
+
+```{r}
+# write out data before fitting models
+
+saveRDS(object = df, file = './data/data_for_models.RDS')
+```
+
+```{r}
+# Q13
+library(MASS)
+library(broom)
+m <- polr(Q13 ~ Q1, weights = df$weight, data = df, Hess=TRUE)
+summary(m)
+
+#exp(m$coefficients)
+#coef(summary(m))
+
+danresults <- tidy(coef(summary(m)))
+danresults$OR <- exp(danresults$Value)
+danresults$ORupper <- exp(danresults$Value + 1.96*danresults$Std..Error)
+danresults$ORlower <- exp(danresults$Value - 1.96*danresults$Std..Error)
+danresults
+```
+
+Q13. Do you get the flu vaccine?
+Q14. How much do you pay to get an influenza vaccine?
+Q15. Are you more likely to get a vaccine if others around you get a vaccine?
+Q16. Are you more likely to get a vaccine if others around you do not get a vaccine?
+Q17. Do you get a vaccine to protect yourself, protect others, or protect yourself and others?
+Q18. What are the reasons you would not get an influenza vaccine?
+Q19. Do you have health insurance?
+Q20. How effective do you think the influenza vaccine is in protecting people from becoming sick with influenza?
+Q21. Are influenza vaccines covered by your insurance?
