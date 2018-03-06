@@ -10,7 +10,7 @@ data/data_for_models.RDS
 .Rhistory
 .DS_Store
 
-*.csv
+#*.csv
 *.sav
 
 .Rproj.user/
