@@ -835,22 +835,6 @@ svychisq(~Q18_9 + Q13, des18)
 saveRDS(object = df, file = './data/data_for_models.RDS')
 ```
 
-```{r}
-# Q13
-library(MASS)
-library(broom)
-m <- polr(Q13 ~ Q1, weights = df$weight, data = df, Hess=TRUE)
-summary(m)
-
-#exp(m$coefficients)
-#coef(summary(m))
-
-danresults <- tidy(coef(summary(m)))
-danresults$OR <- exp(danresults$Value)
-danresults$ORupper <- exp(danresults$Value + 1.96*danresults$Std..Error)
-danresults$ORlower <- exp(danresults$Value - 1.96*danresults$Std..Error)
-danresults
-```
 
 Q13. Do you get the flu vaccine?
 Q14. How much do you pay to get an influenza vaccine?
